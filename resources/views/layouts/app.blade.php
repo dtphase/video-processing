@@ -14,6 +14,8 @@
     <link href="{{ asset('css/app.css') }}" rel="stylesheet">
     <link href="{{ asset('css/darkly.bootstrap.css') }}" rel="stylesheet">
 
+    <link rel="manifest" href="/manifest.json">
+
     @yield('style')
 </head>
 <body>
@@ -90,6 +92,87 @@
     </div>
 
     <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/4.6.0/firebase.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/4.6.0/firebase-messaging.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('{{ asset('js/firebase-messaging-sw.js') }}').then(function(registration) {
+          // Registration was successful
+          console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }, function(err) {
+          // registration failed :(
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      });
+    }
+      // Initialize Firebase
+      var config = {
+        apiKey: "AIzaSyCQD4xprW55MKS-GVr0pbiKk2wku7ecqzU",
+        authDomain: "miharo-tools.firebaseapp.com",
+        databaseURL: "https://miharo-tools.firebaseio.com",
+        projectId: "miharo-tools",
+        storageBucket: "miharo-tools.appspot.com",
+        messagingSenderId: "354449669778"
+      };
+      firebase.initializeApp(config);
+
+      const messaging = firebase.messaging();
+      messaging.requestPermission()
+    .then(function() {
+      console.log('Notification permission granted.');
+      // TODO(developer): Retrieve an Instance ID token for use with FCM.
+      // ...
+    })
+    .catch(function(err) {
+      console.log('Unable to get permission to notify.', err);
+    });
+
+    // Get Instance ID token. Initially this makes a network call, once retrieved
+  // subsequent calls to getToken will return from cache.
+  messaging.getToken()
+  .then(function(currentToken) {
+    if (currentToken) {
+      sendTokenToServer(currentToken);
+      updateUIForPushEnabled(currentToken);
+    } else {
+      // Show permission request.
+      console.log('No Instance ID token available. Request permission to generate one.');
+      // Show permission UI.
+      updateUIForPushPermissionRequired();
+      setTokenSentToServer(false);
+    }
+  })
+  .catch(function(err) {
+    console.log('An error occurred while retrieving token. ', err);
+    showToken('Error retrieving Instance ID token. ', err);
+    setTokenSentToServer(false);
+  });
+
+// Callback fired if Instance ID token is updated.
+messaging.onTokenRefresh(function() {
+  messaging.getToken()
+  .then(function(refreshedToken) {
+    console.log('Token refreshed.');
+    // Indicate that the new Instance ID token has not yet been sent to the
+    // app server.
+    setTokenSentToServer(false);
+    // Send Instance ID token to app server.
+    sendTokenToServer(refreshedToken);
+    // ...
+  })
+  .catch(function(err) {
+    console.log('Unable to retrieve refreshed token ', err);
+    showToken('Unable to retrieve refreshed token ', err);
+  });
+});
+
+
+
+
+    </script>
+
+
     <script src="{{ asset('js/app.js') }}"></script>
     <script src="//code.jquery.com/jquery.js"></script>
     <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>

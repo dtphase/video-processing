@@ -11,7 +11,7 @@
     }
 
     .fresh, .rendering, .rendered .uploading, .uploaded, .moving, .moved {
-        color: #333;
+
     }
 
     .fresh {
@@ -34,10 +34,11 @@
 
     <h2>Videos</h2>
         <table>
-            <tr><th>Status</th><th>Client</th><th>Video</th><th>URL</th><th>Tools</th></tr>
+            <tr><th>Process Status</th><th>Upload Status</th><th>Client</th><th>Video</th><th>URL</th><th>Tools</th></tr>
         @foreach ($videos as $video)
             <tr>
                 <td class="{{ $video->status }}">{{ $video->status }}</td>
+                <td class="{{ $video->upload_status }}">{{ $video->upload_status }}</td>
                 <td>{{ $video->client()->name }}</td>
                 <td>{{$video->name()}}</td>
                 <td><a href="https://www.youtube.com/watch?v={{$video->url}}">Link</a></td>

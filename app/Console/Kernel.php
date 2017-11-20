@@ -52,16 +52,36 @@ class Kernel extends ConsoleKernel
                         $video->save();
                         $directory = '/mnt/g/Footage/'. $client->name . '/[Video' . $video->id . '] Footage';
                         File::makeDirectory($directory, 0777, true);
+                        File::makeDirectory($directory . '/Scores', 0777, true);
                         $filePath = $file->getPathname();
                         $fileName = pathinfo($filePath, PATHINFO_FILENAME);
                         $newPath = $directory . '/Footage ' . $video->id . ' ['. $fileName .'].' . $file->getExtension();
                         $video->path = $newPath;
                         $video->save();
+                        //dd();
                         File::move($file, $newPath);
                         if(!File::exists('/mnt/g/Templates/' . $client->name)) {
                             File::makeDirectory('/mnt/g/Templates/' . $client->name);
                         }
                         $video->status('moved');
+
+                        //TODO: Remove hardcoding
+                        $args = 'EN';
+                        if($client->id == 1) {
+                            $args = 'KR';
+                        }
+                        $process = new \Symfony\Component\Process\Process('python /mnt/c/Users/dt/code/CVPy/read_frames_fast.py "'. $newPath .'" ' . $args);
+                        $process->setTimeout(4*60*60);
+                        $process->run();
+                        if (!$process->isSuccessful()) {
+                            throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+                        } else {
+                            $video->status('cved');
+
+                        }
+
+                        $video->cv_data = $process->getOutput();
+                        $video->save();
                     }
                 }
             }
@@ -130,6 +150,45 @@ class Kernel extends ConsoleKernel
                }
            }
        })->everyMinute();
+       //Check if waiting_for_processing videos have processed
+        $schedule->call(function() {
+            $videos = Video::where('upload_status', 'waiting_for_processing')->get();
+            foreach($videos as $video) {
+                $status = Youtube::checkProcessingStatus($video->url);
+                if($status == 'succeeded') {
+                    $client = $video->client();
+                    $process = new \Symfony\Component\Process\Process('/mnt/c/Windows/System32/cmd.exe /c start "" "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe" -incognito --new-window "https://www.youtube.com/my_videos?o=U^&runscript=true^&end=' . $client->end_screen . '^&video_id=' . $video->url . '^&name='. $client->name . '"');
+                    $process->run();
+                    if (!$process->isSuccessful()) {
+                        throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+                    } else {
+                        $video->upload_status = 'scheduled_for_publishing';
+                        $video->save();
+                    }
+                }
+            }
+
+        })->everyMinute();
+
+        $schedule->call(function() {
+            $videos = \App\Video::where('upload_status', 'scheduled_for_publishing')->where('bot_updated', 1)->get();
+            foreach($videos as $video) {
+                //Check if video should have been published
+                if($video->publish_time != NULL) {
+                    $dt = Carbon::parse($video->publish_time);
+                    if(Carbon::now()->gt($dt)) {
+                        $status = Youtube::checkPrivacyStatus($video->url);
+                        if($status == 'public') {
+                            $video->upload_status = 'published';
+                            $video->save();
+                        } else {
+                            $video->upload_status = 'failed_to_finish_publishing';
+                            $video->save();
+                        }
+                    }
+                }
+            }
+        })->everyMinute();//->everyTenMinutes();
     }
 
     /**

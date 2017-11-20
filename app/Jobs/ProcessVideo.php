@@ -38,6 +38,12 @@ class ProcessVideo implements ShouldQueue
      */
     public function handle()
     {
+        $v = $this->video;
+        $this->format->on('progress',  function ($video, $format, $percentage) use ($v) {
+            if($v->status != $percentage) {
+                $v->status($percentage);
+            }
+        });
         FFMpeg::fromDisk('root')->open($this->path)
         ->addFilter($this->clipFilter)
         ->addFilter(function ($filters) {
@@ -50,8 +56,8 @@ class ProcessVideo implements ShouldQueue
 
 
 
-        $this->video->status('rendered');
+        //$this->video->status('transcoded');
 
-        
+
     }
 }

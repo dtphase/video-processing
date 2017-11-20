@@ -49,7 +49,7 @@ class ScheduleVideo implements ShouldQueue
                     $fileName = pathinfo($this->path, PATHINFO_FILENAME);
                     $upload = $this->upload($video, $this->path); //process thumbnail
                     $video->url = $upload->getVideoId();
-                    $video->upload_status = 'published';
+                    $video->upload_status = 'waiting_for_processing';
                     $video->save();
                     return;
                 } catch(\Exception $e) {
@@ -71,11 +71,15 @@ class ScheduleVideo implements ShouldQueue
         $dt = Carbon::now('GMT+1200');
         $pt = Carbon::parse($client->publish_time, 'GMT+1200');
 
+
         if($pt->isFuture()) {
             $time = $pt;
         } else {
             $time = $pt->addDay();
         }
+
+        $video->publish_time = $time->format('Y-m-d\TH:i:sP');
+        $video->save();
 
         $params = [
             'title'       => $video->title,
@@ -86,7 +90,7 @@ class ScheduleVideo implements ShouldQueue
         ];
 
 
-        $upload = Youtube::upload($filePath, $params, 'private', $client)->withThumbnail($this->thumb);
+        $upload = Youtube::upload($filePath, $params, 'private', $video, $client)->withThumbnail($this->thumb);
         return $upload;
         //$upload = $youtube->insert($path, $youtube, $params, 'snippet,status');
     }

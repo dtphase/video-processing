@@ -186,6 +186,12 @@ return [
         NunoMaduro\LaravelDesktopNotifier\LaravelDesktopNotifierServiceProvider::class,
 
         Dtphase\Youtube\YoutubeServiceProvider::class,
+
+        Edujugon\PushNotification\Providers\PushNotificationServiceProvider::class,
+        Rap2hpoutre\LaravelLogViewer\LaravelLogViewerServiceProvider::class,
+        CodeWizz\RedditAPI\RedditAPIServiceProvider::class,
+        LaravelFCM\FCMServiceProvider::class,
+        Intervention\Image\ImageServiceProvider::class,
     ],
 
     /*
@@ -241,6 +247,10 @@ return [
         'HTML'     => Collective\Html\HtmlFacade::class,
         'BootForm' => Watson\BootstrapForm\Facades\BootstrapForm::class,
         'Youtube' => Dtphase\Youtube\Facades\Youtube::class,
+        'PushNotification' => Edujugon\PushNotification\Facades\PushNotification::class,
+        'RedditAPI' => CodeWizz\RedditAPI\RedditAPIFacade::class,
+        'FCM'      => LaravelFCM\Facades\FCM::class,
+        'Image' => Intervention\Image\Facades\Image::class,
     ],
 
 ];

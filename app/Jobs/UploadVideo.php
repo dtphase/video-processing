@@ -74,7 +74,7 @@ class UploadVideo implements ShouldQueue
         ];
 
 
-        $upload = Youtube::upload($video->path, $params, 'private');
+        $upload = Youtube::upload($video->path, $params, 'private', $video);
         return $upload;
     }
 }

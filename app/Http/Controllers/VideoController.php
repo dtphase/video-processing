@@ -8,17 +8,18 @@ use Input;
 use Google;
 use Youtube;
 use File;
+use Image;
 use App\Client;
 use \App\Video;
 use App\Jobs\ProcessVideo;
 use App\Jobs\ScheduleVideo;
+use Symfony\Component\Process\Process;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+
+
 class VideoController extends Controller
 {
     public function index(Video $video, Request $request) {
-        if($video->status == 'rendering') {
-            //Cancel render and readd to queue
-            return \Redirect::route('home');
-        }
 
         $validatedData = $request->validate([
             'name' => 'required|min:3|max:16',
@@ -85,9 +86,6 @@ class VideoController extends Controller
         $format->setAudioCodec("libmp3lame");
         $format->setKiloBitrate(16000);
         $format->setAudioKiloBitrate(256);
-        /*$format->on('progress', function ($video, $format, $percentage) {
-            echo "$percentage % transcoded";
-        });*/
 
 
         $path = $str = substr($video->path, 1);
@@ -174,6 +172,167 @@ class VideoController extends Controller
         }
     }
 
+    public function marketVideo($video) {
+        $video->upload_status = 'marketed';
+        $video->save();
+    }
+
+    public static function saveFrame($pathToVideo, $pathToSave, $second) {
+        FFMpeg::fromDisk('root')
+        ->open($pathToVideo)
+        ->getFrameFromSeconds($second)
+        ->export()
+        ->toDisk('root')
+        ->save($pathToSave);
+    }
+
+    public static function saveFrames($pathToVideo, $pathToSave) {
+        dump($pathToVideo, $pathToSave);
+        $video = FFMpeg::fromDisk('root')->open($pathToVideo);
+
+        $video->filters()
+        ->extractMultipleFrames(\FFMpeg\Filters\Video\ExtractMultipleFramesFilter::FRAMERATE_EVERY_10SEC, $pathToSave)
+        ->synchronize();
+
+        $format = new FFMpeg\Format\Video\X264();
+        $format->setAudioCodec("libmp3lame");
+        $format->setKiloBitrate(16000);
+        $format->setAudioKiloBitrate(256);
+
+        $video->save($format, $pathToSave . 'newfile.mp4');
+    }
+
+    public static function launchMatcher($template, $imageToMatch) {
+        $process = new Process('python /mnt/c/Users/dt/code/CVPy/compareImages.py "'. $template . '" "' . $imageToMatch . '"');
+        //dd('python /mnt/c/Users/dt/code/CVPy/compareImages.py "'. $template . '" "' . $imageToMatch . '"');
+        $process->start();
 
 
+        /*if (!$process->isSuccessful()) {
+            throw new ProcessFailedException($process);
+        }
+        return $process->getOutput();*/
+    }
+
+    public static function cropImageForTemplate($templateID, $imagePath, $croppedPath) {
+        $img = Image::make($imagePath);
+        /*if($templateID == 'death') {
+            if($img->width() > 1900) {
+                $img->crop(100, 100, 25, 25);
+            } else {
+                $img->crop(100, 100, 640-50, 545-50);
+            }
+        }
+        if($templateID == 'pick') {
+
+        }*/
+        $img->resize(640, 480);
+        $img->save($croppedPath);
+    }
+
+    public function processFootage() {
+        $path = \App\Video::find(23)->path;
+        $framePath = explode('.', $path)[0] . 'frame.png';
+        $croppedPath = explode('.', $path)[0] . 'cropped.png';
+        $deadImage = '/mnt/g/Essentials/Processing/dead.png';
+        $pickImage = '/mnt/g/Essentials/Processing/pick.png';
+        $queueImage = '/mnt/g/Essentials/Processing/queue.png';
+        $ffprobe = \FFMpeg\FFProbe::create();
+        $duration = (int)$ffprobe->format($path)->get('duration');
+
+        $deathFrames = [];
+        $pickFrames = [];
+        $queueFrames = [];
+        $deathTimes = [];
+        $pickTimes = [];
+        $queueTimes = [];
+        for($i=400; $i < $duration; $i+=10) { //test 400
+            $this->saveFrame($path, $framePath, $i);
+            //$this->cropImageForTemplate('death', $framePath, $croppedPath);
+            $maxVal = $this->getImageMatchValue($deadImage, $framePath);
+            if($maxVal > 0.6) {
+                //confirm death or spawn
+                $deathFrames = [];
+                for($j=-30; $j <= 30; $j++) {
+                    $seconds = $i + $j;
+                    if($seconds > 0) {
+                        $this->saveFrame($path, $framePath, $seconds);
+                        //$this->cropImageForTemplate('death', $framePath, $croppedPath);
+                        $maxVal = $this->getImageMatchValue($deadImage, $framePath);
+                        if($maxVal > 0.6) {
+                            array_push($deathFrames, $seconds);
+                        }
+                    }
+                }
+                if(count($deathFrames) > 0) {
+                    $start = min($deathFrames);
+                    $end = max($deathFrames);
+                    if($end > $i) {
+                        $i = $end;
+                    }
+                    array_push($deathTimes, 'Death Time: [' . sprintf('%02d:%02d:%02d', ($start/3600),($start/60%60), $start%60) . ',' . sprintf('%02d:%02d:%02d', ($end/3600),($end/60%60), $end%60) . ']');
+                }
+            } else {
+                //$this->cropImageForTemplate('pick', $framePath, $croppedPath);
+                $maxVal = $this->getImageMatchValue($pickImage, $framePath);
+                $pickFrames = [];
+                if($maxVal > 0.6) {
+                    for($j=-30; $j <= 60; $j++) {
+                        $seconds = $i + $j;
+                        if($seconds > 0) {
+                            $this->saveFrame($path, $framePath, $seconds);
+                            //$this->cropImageForTemplate('pick', $framePath, $croppedPath);
+                            $maxVal = $this->getImageMatchValue($deadImage, $framePath);
+                            if($maxVal > 0.6) {
+                                array_push($pickFrames, $seconds);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    if(count($pickFrames) > 0) {
+                        $start = min($pickFrames);
+                        $end = max($pickFrames);
+                        if($end > $i) {
+                            $i = $end;
+                        }
+                        array_push($pickTimes,  'Picking Time: [' . sprintf('%02d:%02d:%02d', ($start/3600),($start/60%60), $start%60) . ',' . sprintf('%02d:%02d:%02d', ($end/3600),($end/60%60), $end%60) . ']');
+                    }
+                } else {
+                    //$this->cropImageForTemplate('queue', $framePath, $croppedPath);
+                    $maxVal = $this->getImageMatchValue($pickImage, $framePath);
+                    $queueFrames = [];
+                    if($maxVal > 0.6) {
+                        for($j=-30; $j <= 600; $j++) {
+                            $seconds = $i + $j;
+                            if($seconds > 0) {
+                                $this->saveFrame($path, $framePath, $seconds);
+                                //$this->cropImageForTemplate('queue', $framePath, $croppedPath);
+                                $maxVal = $this->getImageMatchValue($deadImage, $framePath);
+                                if($maxVal > 0.6) {
+                                    array_push($queueFrames, $seconds);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        if(count($queueFrames) > 0) {
+                            $start = min($queueFrames);
+                            $end = max($queueFrames);
+                            if($end > $i) {
+                                $i = $end;
+                            }
+                            array_push($queueTimes,  'Queue Time: [' . sprintf('%02d:%02d:%02d', ($start/3600),($start/60%60), $start%60) . ',' . sprintf('%02d:%02d:%02d', ($end/3600),($end/60%60), $end%60) . ']');
+                        }
+                    }
+                }
+            }
+        }
+        dump($deathTimes);
+        echo '<br>';
+        dump($pickTimes);
+        echo '<br>';
+        dump($queueTimes);
+        echo '<br>';
+    }
 }
