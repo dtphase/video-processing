@@ -81,7 +81,7 @@
                 <div class="col-md-8 col-md-offset-2">
                     <div class="panel panel-default">
                         <div class="panel-heading">@yield('title')</div>
-                        <div class="panel-body">
+                        <div class="panel-body clearfix">
                             <div id="alerts-container">@include('flash::message')</div>
                             @yield('content')
                         </div>
@@ -200,6 +200,10 @@ messaging.onTokenRefresh(function() {
 
             }
         });
+    </script>
+
+    <script>
+    @yield('script')
     </script>
 </body>
 </html>

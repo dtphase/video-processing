@@ -5,10 +5,7 @@
 @section('style')
 <style>
 
-    .panel td {
-        border: 1px solid #464545;
-        padding: 8px;
-    }
+
 
     .fresh, .rendering, .rendered .uploading, .uploaded, .moving, .moved {
 
@@ -25,6 +22,17 @@
     .rendered, .uploaded {
         background: #2fd631;
     }
+
+    .video {
+        border: 1px solid #464545;
+        padding: 8px;
+    }
+
+    .thumb {
+        font-size: 11px;
+        text-align: center;
+    }
+
 </style>
 @endsection
 
@@ -33,21 +41,32 @@
 @section('content')
 
     <h2>Videos</h2>
-        <table>
-            <tr><th>Process Status</th><th>Upload Status</th><th>Client</th><th>Video</th><th>URL</th><th>Tools</th></tr>
         @foreach ($videos as $video)
-            <tr>
-                <td class="{{ $video->status }}">{{ $video->status }}</td>
-                <td class="{{ $video->upload_status }}">{{ $video->upload_status }}</td>
-                <td>{{ $video->client()->name }}</td>
-                <td>{{$video->name()}}</td>
-                <td><a href="https://www.youtube.com/watch?v={{$video->url}}">Link</a></td>
-                @if($video->type == 'footage')
-                    <td><a href="/video/{{ $video->id }}">Render</a></td>
+            <div class="video clearfix">
+            @if($video->type == 'footage')
+                <a href="/video/{{ $video->id }}">
+                    <div class="col-sm-3 thumb">
+                        <img src="/images/thumbs/{{ $video->id }}.png" width="100%" />
+                        {{ $video->client()->name }}
+                    </div>
+                    <div class="col-sm-9">
+                        {{$video->name()}}
+                    </div>
                 @else
-                    <td><a href="/video/{{ $video->id }}/publish">Publish</a></td>
+                    <div class="col-sm-3 thumb">
+                        <a href="/video/{{ $video->id }}/publish">
+                        <img src="/images/thumbs/{{ $video->id }}.png" width="100%" />
+                        {{ $video->client()->name }}
+                    </div>
+                    <div class="col-sm-9">
+                            @if($video->title == NULL)
+                                {{$video->name()}}
+                            @else
+                                {{$video->title}}
+                            @endif
+                    </div>
                 @endif
-            </tr>
+                </a>
+            </div>
         @endforeach
-        </table>
 @endsection

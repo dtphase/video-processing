@@ -13,55 +13,18 @@
 
 
 use Ixudra\Curl\Facades\Curl;
+use Carbon\Carbon;
+use App\Jobs\UploadVideo;
+use App\Jobs\ProcessVideo;
+use App\Video;
 
 Route::get('/test2', function() {
-    $videos = App\Video::where('upload_status', 'scheduled_for_publishing')->where('bot_updated', 1)->get();
-    foreach($videos as $video) {
-        //Check if video should have been published
-        if($video->publish_time != NULL) {
-            $dt = Carbon\Carbon::parse($video->publish_time);
-            if(Carbon\Carbon::now()->gt($dt)) {
-                echo 'hi';
-                $status = Youtube::checkPrivacyStatus($video->url);
-                dump($status);
-                if($status == 'public') {
-                    $video->upload_status = 'published';
-                    $video->save();
-                } //else {
-                //    $video->upload_status = 'failed_to_finish_publishing';
-                //    $video->save();
-                //}
-            }
-        }
-    }
+    \Mail::to('dtphase@gmail.com')->send(new App\Mail\ProcessingComplete());
 });
 
 
 Route::get('/test', function() {
-    $path = \App\Video::find(23)->path;
-    $framePath = explode('.', $path)[0] . 'frame.bmp';
-    $folderPath = explode('.', $path)[0] . '/frames/';
-    $croppedPath = explode('.', $path)[0] . 'cropped.png';
-    $deadImage = '/mnt/g/Essentials/Processing/dead.png';
-    $deadImage = '/mnt/g/Essentials/Processing/queue.png';
-    /*$start = microtime(true);
-    \App\Http\Controllers\VideoController::launchMatcher($deadImage, $framePath);
-    $m = DB::table('youtube_access_tokens')->where('id', 1)->update(['access_token' => 'frame']);
-    $ffprobe = \FFMpeg\FFProbe::create();
-    $duration = (int)$ffprobe->format($path)->get('duration');
-    for($i = 0; $i < $duration; $i+=10) {
-        \App\Http\Controllers\VideoController::saveFrame($path, $framePath, $i);
-        $m = DB::table('youtube_access_tokens')->where('id', 1)->update(['access_token' => 'frame']);
-        while(DB::table('youtube_access_tokens')->first()->access_token == 'frame') {
-            usleep(100);
-        }
-        $maxVal = DB::table('youtube_access_tokens')->first()->access_token;
-        echo $maxVal . '<br>';
-    }
-    $end = microtime(true);
-    echo ($end - $start).' seconds<br>';
-    $m = DB::table('youtube_access_tokens')->where('id', 1)->update(['access_token' => 'shutdown']);*/
-    dump($deadImage, $framePath);
+
 });
 
 Route::post('/storepushtoken/{token}', function($token) {
@@ -70,7 +33,7 @@ Route::post('/storepushtoken/{token}', function($token) {
 });
 
 Route::get('/', ['as' => 'home', 'uses' => function () {
-    $videos = App\Video::orderBy('id', 'desc')->take(20)->get();
+    $videos = App\Video::orderBy('id', 'desc')->whereNotIn('status', ['deleted', 'moved', 'moving'])->take(300)->get();
     return view('videos', ["videos" => $videos]);
 }]);
 
@@ -79,12 +42,91 @@ Route::get('/video/{video}', function (App\Video $video) {
     return view('video', ["video" => $video, 'client' => $client]);
 });
 
+Route::get('/footage', function () {
+    $clients = App\Client::get();
+    $feet = [];
+    foreach ($clients as $client) {
+        $directory = "/mnt/g/Raw/" . $client->name;
+        if(!File::exists($directory)) {
+            File::makeDirectory($directory);
+        }
+        $files = File::allFiles($directory);
+        foreach ($files as $file) {
+            array_push($feet, [$client->name, $file]);
+        }
+    }
+    return view('footage', ["feet" => $feet]);
+});
+
+//TODO: move to controller
+Route::get('/footage/{file}', function ($processFile) {
+    $clients = App\Client::get();
+    $feet = [];
+    foreach ($clients as $client) {
+        $directory = "/mnt/g/Raw/" . $client->name;
+        if(!File::exists($directory)) {
+            File::makeDirectory($directory);
+        }
+        $files = File::allFiles($directory);
+        foreach ($files as $file) {
+            if($file->getFilename() == $processFile) {
+                if($file->getExtension() == "mkv" || $file->getExtension() == "mp4") {
+                    $modified = Carbon::createFromTimestamp(File::lastModified($file));
+                    $now = Carbon::now();
+                    \Log::info('Modified: ' . $modified);
+                    \Log::info('Now: ' . $now);
+                    if($now->diffInHours($modified) > -1) {
+                        \Log::info($now->diffInHours($modified) . ' hours have passed since last modification, okay to begin backup');
+                        //Create a new video of type footage
+                        $video = new Video;
+                        $video->client_id = $client->id;
+                        $video->status = 'moving';
+                        $video->type = 'footage';
+                        $video->save();
+
+                        //Create a directory for the footage and move the file to the new directory
+                        $directory = '/mnt/g/Footage/'. $client->name . '/[Video' . $video->id . '] Footage';
+                        File::makeDirectory($directory, 0777, true);
+                        $filePath = $file->getPathname();
+                        $fileName = pathinfo($filePath, PATHINFO_FILENAME);
+                        $newPath = $directory . '/Footage ' . $video->id . ' ['. $fileName .'].' . $file->getExtension();
+                        $newPathCopy = $directory . '/Footage ' . $video->id . ' ['. $fileName .'].mp4';
+                        $video->path = $newPath;
+                        $video->save();
+                        File::move($filePath, $newPath);
+                        if(!File::exists('/mnt/g/Templates/' . $client->name)) {
+                            File::makeDirectory('/mnt/g/Templates/' . $client->name);
+                        }
+                        $video->status('moved');
+
+                        //Upload the footage to YouTube as a backup
+                        UploadVideo::dispatch($video)->onConnection('upload');
+                        ProcessVideo::dispatch($video->path, NULL, NULL, NULL, $video);
+
+                    }
+                    flash('Footage ' . $file->getFilename() . ' has been queued for processing.')->success();
+                }
+                return Redirect::to('footage');
+            }
+        }
+    }
+    return view('footage', ["feet" => $feet]);
+});
+
+Route::get('video/{video}/cv')->uses('VideoController@cvVideo')->name('cv');
+
+Route::get('video/{video}/cv2')->uses('VideoController@cvRendered')->name('cv2');
+
 Route::get('/video/{video}/publish', function (App\Video $video) {
     $client = App\Client::find($video->client_id);
     return view('publish', ["video" => $video, 'client' => $client]);
 });
 
 Route::post('/video/{video}/publish', ['uses' => 'VideoController@schedule']);
+
+Route::get('/video/{video}/publish/overedit', ['uses' => 'VideoController@overedit']);
+
+Route::put('/video/{video}/publish', ['uses' => 'VideoController@update']);
 
 Route::get('/clients', ['uses' => function (App\Video $video) {
     $clients = App\Client::orderBy('id', 'asc')->take(20)->get();

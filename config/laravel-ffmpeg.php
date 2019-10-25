@@ -4,7 +4,7 @@ return [
     'default_disk' => 'root',
 
     'ffmpeg.binaries' => '/usr/bin/ffmpeg',
-    'ffmpeg.threads'  => 12,
+    'ffmpeg.threads'  => 6,
 
     'ffprobe.binaries' => '/usr/bin/ffprobe',
 

@@ -9,12 +9,49 @@ use LaravelFCM\Message\OptionsBuilder;
 use LaravelFCM\Message\PayloadDataBuilder;
 use LaravelFCM\Message\PayloadNotificationBuilder;
 use FCM;
+use Carbon\Carbon;
 
 class Video extends Model
 {
+
+
+
+
+
     protected $fillable = [
         'client_id', 'path', 'url',
     ];
+
+    public function currentTask() {
+        $s = $video->status;
+        $us = $video->upload_status;
+
+
+
+        //$statuses = ['fresh', 'moving', 'moved', 'cved', 'processing_failed', 'waiting_for_processing',  'unready', 'uploaded', 'moved', 'failed', 'published', 'failed_to_finish_publishing', 'rendering', 'marketed', 'queued', 'rendered'];
+    }
+
+    public function readableData() {
+        $data = $this->cv_data;
+        if($data != NULL) {
+            return json_decode($data);
+        } else {
+            return 'failed';
+        }
+    }
+
+    public function startSeconds($videoNumber) {
+        $startTime = $this->readableData()[$videoNumber][0];
+        $explode = explode(':', $startTime);
+        $seconds = ($explode[0] * 60 * 60) + ($explode[1] * 60) + $explode[2];
+        return $seconds;
+    }
+
+    public function gameLength($gameNumber) {
+        $startTime = Carbon::parse($this->readableData()[$gameNumber][0]);
+        $finishTime = Carbon::parse($this->readableData()[$gameNumber][1]);
+        return $finishTime->diff($startTime)->format('%H:%I:%S');
+    }
 
     public function client() {
         return Client::find($this->client_id);
@@ -23,7 +60,7 @@ class Video extends Model
     public function status($newStatus) {
         $this->status = $newStatus;
         $this->save();
-        broadcast(new VideoStatusChanged($this));
+        //broadcast(new VideoStatusChanged($this));
     }
 
     public function name() {
@@ -36,6 +73,12 @@ class Video extends Model
         $path = explode('/', $this->path);
         $last = array_pop($path);
         $path = implode('/', $path);
+        return $path;
+    }
+
+    public function mp4() {
+        $path = pathinfo($this->path);
+        $path = $path['dirname'] . '/' . $path['filename'] . '.mp4';
         return $path;
     }
 

@@ -32,78 +32,99 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        $schedule->call(function() {
-            $clients = Client::get();
+        // $schedule->call(function() {
+        //     $clients = Client::get();
+        //
+        //     foreach ($clients as $client) {
+        //         $directory = "/mnt/g/Raw/" . $client->name;
+        //         if(!File::exists($directory)) {
+        //             File::makeDirectory($directory);
+        //         }
+        //         $files = File::allFiles($directory);
+        //         foreach ($files as $file) {
+                    
+        //
+        //                         //Upload the footage to YouTube as a backup
+        //                         UploadVideo::dispatch($video)->onConnection('upload');
+        //
+        //                         if($file->getExtension() == "mkv") {
+        //                             $process = new \Symfony\Component\Process\Process('ffmpeg -i "'.$newPath.'" -vcodec copy -acodec copy "' . $newPathCopy . '"');
+        //                             $process->setTimeout(4*60*60);
+        //                             $process->run();
+        //                             if (!$process->isSuccessful()) {
+        //                                 throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+        //                                 return;
+        //                             } else {
+        //                                 $video->status('copied');
+        //                                 $newPath = $newPathCopy;
+        //                             }
+        //                         }
+        //
+        //
+        //
+        //                         //Get duration of footage
+        //                         $ffprobe = \FFMpeg\FFProbe::create();
+        //                         $duration = $ffprobe->format($newPath)->get('duration');
+        //
+        //                         //Get thumbnail for site
+        //                         if($duration > 600) { //10 mins
+        //                             $v = \FFMpeg::fromDisk('root')->open($newPath);
+        //                             $v
+        //                             ->frame(\FFMpeg\Coordinate\TimeCode::fromSeconds(540)) //9 mins
+        //                             ->save('/mnt/c/Users/dt/code/miharo/public/images/thumbs/'. $video->id . '.png');
+        //                         }
+        //
+        //                         //TODO: Remove hardcoding
+        //                         $args = ' "' . $newPath . '" ';
+        //                         if($client->id == 1) {
+        //                             $args .= 'KR ';
+        //                         } else {
+        //                             $args .= 'EN ';
+        //                         }
+        //                         $args .= (int)$duration*60 . ' ';
+        //                         $args .= $client->id . ' ';
+        //                         $args .= $video->id;
+        //
+        //                         //Run python footage analysis
+        //                         $process = new \Symfony\Component\Process\Process('python /mnt/g/Scripts/Overspy.py' . $args);
+        //                         $process->setTimeout(6*60*60);
+        //                         $process->run();
+        //                         if (!$process->isSuccessful()) {
+        //                             \Mail::to('dtphase@gmail.com')->send(new \App\Mail\ProcessingComplete('Footage failed to process'));
+        //                             throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+        //                         } else {
+        //                             \Mail::to('dtphase@gmail.com')->send(new \App\Mail\ProcessingComplete('Footage processed'));
+        //                             $video->status('cved');
+        //                         }
+        //
+        //                         $video->cv_data = $process->getOutput();
+        //                         $video->save();
+        //
+        //
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     })->everyMinute();
 
-            foreach ($clients as $client) {
-                $directory = "/mnt/g/Raw/" . $client->name;
-                if(!File::exists($directory)) {
-                    File::makeDirectory($directory);
-                }
-                $files = File::allFiles($directory);
-                foreach ($files as $file)
-                {
-                    if($file->getExtension() == "mkv" || $file->getExtension() == "mp4") {
-                        //Move file to backup drive and copy files for editing
-                        $video = new Video;
-                        $video->client_id = $client->id;
-                        $video->status = 'moving';
-                        $video->type = 'footage';
-                        $video->save();
-                        $directory = '/mnt/g/Footage/'. $client->name . '/[Video' . $video->id . '] Footage';
-                        File::makeDirectory($directory, 0777, true);
-                        File::makeDirectory($directory . '/Scores', 0777, true);
-                        $filePath = $file->getPathname();
-                        $fileName = pathinfo($filePath, PATHINFO_FILENAME);
-                        $newPath = $directory . '/Footage ' . $video->id . ' ['. $fileName .'].' . $file->getExtension();
-                        $video->path = $newPath;
-                        $video->save();
-                        //dd();
-                        File::move($file, $newPath);
-                        if(!File::exists('/mnt/g/Templates/' . $client->name)) {
-                            File::makeDirectory('/mnt/g/Templates/' . $client->name);
-                        }
-                        $video->status('moved');
+            // $videos = Video::where('upload_status', 'waiting')->where('status','<>','deleted')->get();
+            //
+            // foreach ($videos as $video) {
+            //     if($video->status == 'moving') {
+            //         break;
+            //     }
+            //     $video->upload_status = 'queued';
+            //     $video->save();
+            //     try {
+            //         UploadVideo::dispatch($video)->onConnection('upload');
+            //     } catch(\Exception $e) {
+            //         \Log::error('ERAIS' . $e);
+            //     }
+            //
+            // }
 
-                        //TODO: Remove hardcoding
-                        $args = 'EN';
-                        if($client->id == 1) {
-                            $args = 'KR';
-                        }
-                        $process = new \Symfony\Component\Process\Process('python /mnt/c/Users/dt/code/CVPy/read_frames_fast.py "'. $newPath .'" ' . $args);
-                        $process->setTimeout(4*60*60);
-                        $process->run();
-                        if (!$process->isSuccessful()) {
-                            throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
-                        } else {
-                            $video->status('cved');
-
-                        }
-
-                        $video->cv_data = $process->getOutput();
-                        $video->save();
-                    }
-                }
-            }
-
-            $videos = Video::where('upload_status', 'waiting')->get();
-
-            foreach ($videos as $video) {
-                if($video->status == 'moving') {
-                    break;
-                }
-                $video->upload_status = 'queued';
-                $video->save();
-                try {
-                    UploadVideo::dispatch($video)->onConnection('upload');
-                } catch(\Exception $e) {
-                    \Log::error('ERAIS' . $e);
-                }
-
-            }
-       })->everyMinute();
        $schedule->call(function() {
-           $videos = Video::where('upload_status', 'checking_files')->get();
+           $videos = Video::where('upload_status', 'checking_files')->where('status', '<>', 'deleted')->get();
            foreach($videos as $video) {
                if($files = $video->publishFilesReady()) {
                    $video->upload_status = 'queued';
@@ -152,7 +173,7 @@ class Kernel extends ConsoleKernel
        })->everyMinute();
        //Check if waiting_for_processing videos have processed
         $schedule->call(function() {
-            $videos = Video::where('upload_status', 'waiting_for_processing')->get();
+            $videos = Video::where('upload_status', 'waiting_for_processing')->where('status', '<>', 'deleted')->get();
             foreach($videos as $video) {
                 $status = Youtube::checkProcessingStatus($video->url);
                 if($status == 'succeeded') {
@@ -171,7 +192,7 @@ class Kernel extends ConsoleKernel
         })->everyMinute();
 
         $schedule->call(function() {
-            $videos = \App\Video::where('upload_status', 'scheduled_for_publishing')->where('bot_updated', 1)->get();
+            $videos = \App\Video::where('upload_status', 'scheduled_for_publishing')->where('status', '<>', 'deleted')->get();
             foreach($videos as $video) {
                 //Check if video should have been published
                 if($video->publish_time != NULL) {
@@ -182,13 +203,23 @@ class Kernel extends ConsoleKernel
                             $video->upload_status = 'published';
                             $video->save();
                         } else {
-                            $video->upload_status = 'failed_to_finish_publishing';
+                            $video->upload_status = 'published';
                             $video->save();
                         }
                     }
                 }
             }
         })->everyMinute();//->everyTenMinutes();
+
+        $schedule->call(function() {
+            $videos = \App\Video::where('status', 'moved')->get();
+            foreach($videos as $video) {
+                //Check if video should have been published
+                if(!file_exists($video->path)) {
+                    $video->status('deleted');
+                }
+            }
+        })->hourly();//->everyTenMinutes();
     }
 
     /**

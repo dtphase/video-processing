@@ -82,21 +82,54 @@ class VideoController extends Controller
             \Log::error($e . 'Missing template files');
         }
 
+
+       // FFMpeg::fromDisk('root')->open($path);
+       $path = substr($video->path, 1);
+       $ffprobe = \FFMpeg\FFProbe::create();
+       $streams = (int)$ffprobe->format('/'.$path)->get('nb_streams');
+
         $format = new FFMpeg\Format\Video\X264();
         $format->setAudioCodec("libmp3lame");
         $format->setKiloBitrate(16000);
         $format->setAudioKiloBitrate(256);
+        $maps = [];
+        for($i=0; $i < $streams; $i++) {
+            array_push($maps, '-map', '0:'. $i);
+        }
+        $format->setAdditionalParameters($maps);
 
-
-        $path = $str = substr($video->path, 1);
-        ProcessVideo::dispatch($path, $clipFilter, $format, $newPath, $video);
+        ProcessVideo::dispatch($path, $clipFilter, $format, $newPath, $video, $v);
         $video->status('rendering');
+
+        /*'/usr/bin/ffmpeg' '-y' '-i' '/mnt/g/Footage/Sleepy/[Video516] Footage/Footage 516 [2018-02-02 22-07-59].mkv' '-ss' '02:14:00.00' '-t' '00:18:00.00' '-r' '60' '-b_strategy' '1' '-bf' '3' '-g' '250' '-threads' '12' '-map' '0:0' '-map' '0:1' '-map' '0:2' '-map' '0:3' '-vcodec' 'libx264' '-acodec' 'libmp3lame' '-b:v' '16000k' '-refs' '6' '-coder' '1' '-sc_threshold' '40' '-flags' '+loop' '-me_range' '16' '-subq' '7' '-i_qfactor' '0.71' '-qcomp' '0.6' '-qdiff' '4' '-trellis' '1' '-b:a' '256k' '-pass' '1' '-passlogfile' '/tmp/ffmpeg-passes5a7bdef686752qsws8/pass-5a7bdef686955' '/mnt/g/Videos/Sleepy/[Video 525] calv/RenderedFootage [2018-02-02 22-07-59].mp4'*/
 
 
         //TODO: Video render queue
         flash('Video has been added to the render queue')->success();
         return \Redirect::route('home');
 
+    }
+
+    public function update(Video $video, Request $request) {
+        $validated = $request->validate([
+            'title' => 'required|min:3|max:255',
+            'tags' => 'required',
+            'description' => 'required',
+        ]);
+        $video->title = $validated['title'];
+        $video->description = $validated['description'];
+        $video->tags = $validated['tags'];
+        $video->save();
+
+        Youtube::updateVideo($video->url, $validated['title'], $validated['description'], $validated['tags']);
+
+        flash('All changes saved')->success();
+
+        return \Redirect::route('home');
+    }
+
+    public function cvRendered(Video $video) {
+        ProcessVideo::dispatch('', '', '', '', $video);
     }
 
     public function schedule(Video $video, Request $request) {
@@ -109,18 +142,16 @@ class VideoController extends Controller
         $video->title = $validated['title'];
         $video->description = $validated['description'];
         $video->tags = $validated['tags'];
-
-        if($files = $video->publishFilesReady()) {
-            $video->upload_status = 'queued';
-            ScheduleVideo::dispatch($video, $files['video'], $files['thumb'])->onConnection('upload');
-            flash('Video successfully scheduled')->success();
-        } else {
-            $video->upload_status = 'checking_files';
-            flash('Video added to publish queue, waiting for files')->info();
-        }
-
+        $video->upload_status = 'checking_files';
+        flash('Video added to publish queue, checking for files')->info();
         $video->save();
 
+        return \Redirect::route('home');
+    }
+
+    public function overedit(Video $video, Request $request) {
+        $this->cvRendered($video);
+        flash('Overedit Started')->info();
         return \Redirect::route('home');
     }
 
@@ -160,7 +191,62 @@ class VideoController extends Controller
         \Redirect::to('/')->send();
     }
 
+    public function cvVideo(\App\Video $video) {
+        $newPath = $video->path;
+        $file = new \SplFileInfo($newPath);
+        $newPathCopy = $file->getPath() . '/cv.mp4';
+        $client = $video->client();
+        if($file->getExtension() == "mkv") {
+            $process = new \Symfony\Component\Process\Process('ffmpeg -i "'.$newPath.'" -vcodec copy -acodec copy "' . $newPathCopy . '"');
+            $process->setTimeout(4*60*60);
+            $process->run();
+            if (!$process->isSuccessful()) {
+                throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+                return;
+            } else {
+                $video->status('copied');
+                $newPath = $newPathCopy;
+            }
+        }
 
+        //Get duration of footage
+        $ffprobe = \FFMpeg\FFProbe::create();
+        $duration = $ffprobe->format($newPath)->get('duration');
+
+        //Get thumbnail for site
+        if($duration > 600) { //10 mins
+            $v = \FFMpeg::fromDisk('root')->open($newPath);
+            $v
+            ->frame(\FFMpeg\Coordinate\TimeCode::fromSeconds(540)) //9 mins
+            ->save('/mnt/c/Users/dt/code/miharo/public/images/thumbs/'. $video->id . '.png');
+        }
+
+        //TODO: Remove hardcoding
+        $args = ' "' . $newPath . '" ';
+        if($client->id == 1) {
+            $args .= 'KR ';
+        } else {
+            $args .= 'EN ';
+        }
+        $args .= (int)$duration*60 . ' ';
+        $args .= $client->id . ' ';
+        $args .= $video->id;
+
+        //Run python footage analysis
+        $process = new \Symfony\Component\Process\Process('python /mnt/g/Scripts/Overspy.py' . $args);
+        $process->setTimeout(6*60*60);
+        $process->run();
+        if (!$process->isSuccessful()) {
+            \Mail::to('dtphase@gmail.com')->send(new \App\Mail\ProcessingComplete('Footage failed to process'));
+            throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+        } else {
+            \Mail::to('dtphase@gmail.com')->send(new \App\Mail\ProcessingComplete('Footage processed'));
+            $video->status('cved');
+        }
+
+        $video->cv_data = $process->getOutput();
+        $video->save();
+    }
 
     protected function getToken() {
         $client = new Google_Client();
